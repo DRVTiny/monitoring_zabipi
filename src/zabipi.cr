@@ -38,7 +38,7 @@ module Monitoring
     class ZAPIAnswer
             @result : (JSON::Any | Nil)
             
-            def initialize (@ua : HTTP::Client, @api_url : String, @raw_request : String)
+            def initialize (@ua : HTTP::Client, @api_url : URI, @raw_request : String)
             end
             
             def result
@@ -46,13 +46,13 @@ module Monitoring
                     r=if @result.is_a?(JSON::Any)
                     	@result || JSON.parse("[]")
                       else
-                      	self.req
+                      	self.req(1)
                       end
                     @result=r
             end
             
             protected def req
-                    @ua.exec("POST", @api_url,
+                    @ua.exec("POST", @api_url.path.to_s,
                             headers: HTTP::Headers{"Content-type"=>"application/json"},
                             body: @raw_request
                     ) do |resp|
@@ -70,6 +70,29 @@ module Monitoring
                             end
                     end
             end
+            
+            protected def req (some : Int32)
+#            	    oAPIUrl=URI.parse @api_url
+            	    HTTP::Client.new(@api_url) do |client|
+                        client.exec("POST", @api_url.path.to_s,
+                                headers: HTTP::Headers{"Content-type"=>"application/json"},
+                                body: @raw_request
+                        ) do |resp|
+                                raise HTTPException.new(resp.status_code) unless resp.status_code==200
+                                if r=resp.body_io.gets
+                                        zbxResp=JSON.parse(r)
+                                        if err=zbxResp["error"]?
+                                                raise ZAPIException.new(zbxResp["error"].as_s)
+                                        elsif ! zbxResp["result"]?
+                                                raise ZAPIException.new("no result")
+                                        end
+                                        return zbxResp["result"]
+                                else			
+                                        raise ConnException.new("Connection error: server not responded")
+                                end
+                        end
+                    end
+            end            
     end
 
     class Zabipi
@@ -78,27 +101,29 @@ module Monitoring
             @port : Int32
             @ua : HTTP::Client
             @oAPIUrl : URI
-            def initialize (@apiUrl : String, login : String, password : String)
+            def initialize (@apiUrl : String, login : String, password : String, @debug=false)
                     @oAPIUrl=URI.parse @apiUrl
                     @host=@oAPIUrl.host || raise "You must specify host part in URL string passed to ZabbixAPI constructor"
-                    @port=@oAPIUrl.port || 80
-                    puts "host=#{@host}, port=#{@port}"
-                    @ua=HTTP::Client.new(@host || "", @port)
-                    @ua.exec("POST", @apiUrl,
-                            headers: HTTP::Headers{"Content-type"=>"application/json"},
-                            body: Hash{"jsonrpc"=>"2.0","method"=>"user.login","id"=>1,"params"=>{"password"=>password,"user"=>login}}.to_json
+                    @port=@oAPIUrl.port || (@oAPIUrl.scheme.to_s.downcase=="https" ? 443 : 80)
+                    @oAPIUrl.path=@oAPIUrl.path.to_s.size>0 ? @oAPIUrl.path.to_s : "/"
+                    puts "host=#{@host}, port=#{@port}, rurl=#{@oAPIUrl.path}" if @debug
+                    @ua=HTTP::Client.new(@oAPIUrl)
+                    @ua.exec("POST",
+                    	    	@oAPIUrl.path.to_s,
+                            	headers: HTTP::Headers{"Content-type"=>"application/json"},
+                            	body: Hash{"jsonrpc"=>"2.0","method"=>"user.login","id"=>1,"params"=>{"password"=>password,"user"=>login}}.to_json
                     ) do |resp|
-                      raise "What the fuck?" unless resp.status_code.to_s=="200"
+                      raise HTTPException.new(resp.status_code) unless resp.status_code==200
                       @authToken=""
                       if r=resp.body_io.gets
                             @authToken=JSON.parse(r)["result"].as_s
-                            puts "authToken=#{@authToken}"
+                            puts "authToken=#{@authToken}" if @debug
                       end
                     end
             end
             
             def do (method : String, pars : (Hash | Array))
-                    return ZAPIAnswer.new(@ua, @apiUrl, Hash{"jsonrpc"=>"2.0","method"=>method,"id"=>0,"params"=>pars,"auth"=>@authToken}.to_json)
+                    return ZAPIAnswer.new(@ua, @oAPIUrl, Hash{"jsonrpc"=>"2.0","method"=>method,"id"=>0,"params"=>pars,"auth"=>@authToken}.to_json)
             end
     end
 end
