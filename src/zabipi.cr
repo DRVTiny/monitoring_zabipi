@@ -1,9 +1,9 @@
 require "./zabipi/*"
 require "json"
 require "uri"
-require "http/client"
+require "cossack"
 
-module Monitoring
+module MonitoringC
     class HTTPException < Exception
             @status_type : String = "Illegal HTTP status code"
             @status_code : Int32 = 999
@@ -38,7 +38,7 @@ module Monitoring
     class ZAPIAnswer
             @result : (JSON::Any | Nil)
             
-            def initialize (@ua : HTTP::Client, @api_url : URI, @raw_request : String)
+            def initialize (@ua : Cossack::Client, @api_url : URI, @raw_request : String)
             end
             
             def result
@@ -46,84 +46,57 @@ module Monitoring
                     r=if @result.is_a?(JSON::Any)
                     	@result || JSON.parse("[]")
                       else
-                      	self.req(1)
+                      	self.req
                       end
                     @result=r
             end
             
             protected def req
-                    @ua.exec("POST", @api_url.path.to_s,
-                            headers: HTTP::Headers{"Content-type"=>"application/json"},
-                            body: @raw_request
-                    ) do |resp|
-                            raise HTTPException.new(resp.status_code) unless resp.status_code==200
-                            if r=resp.body_io.gets
-                                    zbxResp=JSON.parse(r)
-                                    if err=zbxResp["error"]?
-                                            raise ZAPIException.new(zbxResp["error"].as_s)
-                                    elsif ! zbxResp["result"]?
-                                            raise ZAPIException.new("no result")
-                                    end
-                                    return zbxResp["result"]
-                            else			
-                                    raise ConnException.new("Connection error: server not responded")
-                            end
+                    resp=@ua.post(@api_url.path.to_s, @raw_request) do |req|
+                    	req.headers["Content-type"]="application/json"
                     end
+                    raise HTTPException.new(resp.status) unless resp.status==200
+                    zbxResp=JSON.parse(resp.body)
+                    if err=zbxResp["error"]?
+                            raise ZAPIException.new(zbxResp["error"].as_s)
+                    elsif ! zbxResp["result"]?
+                            raise ZAPIException.new("no result")
+                    end
+                    return zbxResp["result"]
             end
-            
-            protected def req (some : Int32)
-#            	    oAPIUrl=URI.parse @api_url
-            	    HTTP::Client.new(@api_url) do |client|
-                        client.exec("POST", @api_url.path.to_s,
-                                headers: HTTP::Headers{"Content-type"=>"application/json"},
-                                body: @raw_request
-                        ) do |resp|
-                                raise HTTPException.new(resp.status_code) unless resp.status_code==200
-                                if r=resp.body_io.gets
-                                        zbxResp=JSON.parse(r)
-                                        if err=zbxResp["error"]?
-                                                raise ZAPIException.new(zbxResp["error"].as_s)
-                                        elsif ! zbxResp["result"]?
-                                                raise ZAPIException.new("no result")
-                                        end
-                                        return zbxResp["result"]
-                                else			
-                                        raise ConnException.new("Connection error: server not responded")
-                                end
-                        end
-                    end
-            end            
     end
 
     class Zabipi
-            @authToken : (String | Nil)
-            @host : (String | Nil)
-            @port : Int32
-            @ua : HTTP::Client
+    	    DFLT_ZBX_API_RURL="/api_jsonrpc.php"
+            @sAuthToken : (String | Nil)
+            @oUserAgent : Cossack::Client
             @oAPIUrl : URI
-            def initialize (@apiUrl : String, login : String, password : String, @debug=false)
-                    @oAPIUrl=URI.parse @apiUrl
-                    @host=@oAPIUrl.host || raise "You must specify host part in URL string passed to ZabbixAPI constructor"
-                    @port=@oAPIUrl.port || (@oAPIUrl.scheme.to_s.downcase=="https" ? 443 : 80)
-                    @oAPIUrl.path=@oAPIUrl.path.to_s.size>0 ? @oAPIUrl.path.to_s : "/"
-                    puts "host=#{@host}, port=#{@port}, rurl=#{@oAPIUrl.path}" if @debug
-                    @ua=HTTP::Client.new(@oAPIUrl)
-                    @ua.exec("POST",
-                    	    	@oAPIUrl.path.to_s,
-                            	headers: HTTP::Headers{"Content-type"=>"application/json"},
-                            	body: Hash{"jsonrpc"=>"2.0","method"=>"user.login","id"=>1,"params"=>{"password"=>password,"user"=>login}}.to_json
-                    ) do |resp|
-                      raise HTTPException.new(resp.status_code) unless resp.status_code==200
-                      @authToken=""
-                      if r=resp.body_io.gets
-                            @authToken=JSON.parse(r)["result"].as_s
-                            puts "authToken=#{@authToken}" if @debug
-                      end
-                    end
+            @sAPIRelUrl : String
+            getter :oUserAgent, :sAuthToken, :oAPIUrl
+            property :debug
+            def initialize (apiUrl : String, login : String, password : String, @debug=false)
+                @oAPIUrl=URI.parse apiUrl
+                @oAPIUrl.scheme="http" if @oAPIUrl.scheme.nil?
+                @oAPIUrl.scheme=@oAPIUrl.scheme.to_s.downcase
+                @oAPIUrl.host="localhost" if @oAPIUrl.host.nil?
+                @oAPIUrl.port=(@oAPIUrl.scheme.to_s.downcase=="https" ? 443 : 80) if @oAPIUrl.port.nil?
+                @oAPIUrl.path=DFLT_ZBX_API_RURL if @oAPIUrl.path.nil?
+                @sAPIRelUrl=@oAPIUrl.path.to_s
+                puts "host=#{@oAPIUrl.host}, port=#{@oAPIUrl.port}, rurl=#{@sAPIRelUrl}" if @debug
+                @oUserAgent=Cossack::Client.new(@oAPIUrl.scheme.to_s+"://"+@oAPIUrl.host.to_s+":"+@oAPIUrl.port.to_s)
+                resp=@oUserAgent.post(
+                    @sAPIRelUrl,
+                    Hash{"jsonrpc"=>"2.0","method"=>"user.login","id"=>1,"params"=>{"password"=>password,"user"=>login}}.to_json
+                ) do |req|
+                    req.headers["Content-type"]="application/json"
+                end
+                raise HTTPException.new(resp.status) unless resp.status==200
+                @sAuthToken=JSON.parse(resp.body)["result"].as_s
+                puts "authToken=#{@sAuthToken}" if @debug
             end
             
             def do (method : String, pars : (Hash | Array))
-                    return ZAPIAnswer.new(@ua, @oAPIUrl, Hash{"jsonrpc"=>"2.0","method"=>method,"id"=>0,"params"=>pars,"auth"=>@authToken}.to_json)
+                    return ZAPIAnswer.new(@oUserAgent, @oAPIUrl, Hash{"jsonrpc"=>"2.0","method"=>method,"id"=>0,"params"=>pars,"auth"=>@sAuthToken}.to_json)
             end
     end
 end
