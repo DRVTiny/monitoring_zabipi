@@ -3,7 +3,7 @@ require "json"
 require "uri"
 require "cossack"
 
-module MonitoringC
+module Monitoring
     class HTTPException < Exception
             @status_type : String = "Illegal HTTP status code"
             @status_code : Int32 = 999
