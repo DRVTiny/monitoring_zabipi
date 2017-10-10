@@ -33,8 +33,7 @@ puts zans.result.map{ |t| [t["triggerid"], t["description"]] }.to_h.to_json
 
 For now, it is in (very) early development stage.
 
-* SSL is not supported /NIY
-* API usage without authentication is not supported /NIY
+* API usage without authentication is not supported /N.I.Y.
 
 ## Development
 
