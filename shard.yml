@@ -4,6 +4,14 @@ version: 0.1.0
 authors:
   - Andrey A. Konovalov <drvtiny@gmail.com>
 
+dependencies:
+  kemal:
+    github: kemalcr/kemal
+    branch: master
+  cossack:
+    github: crystal-community/cossack
+    version: ~> 0.1    
+    
 crystal: 0.23.1
 
 license: MIT
