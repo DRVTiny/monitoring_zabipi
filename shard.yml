@@ -5,9 +5,6 @@ authors:
   - Andrey A. Konovalov <drvtiny@gmail.com>
 
 dependencies:
-  kemal:
-    github: kemalcr/kemal
-    branch: master
   cossack:
     github: crystal-community/cossack
     version: ~> 0.1    
