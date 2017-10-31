@@ -99,4 +99,44 @@ module Monitoring
                     return ZAPIAnswer.new(@oUserAgent, @oAPIUrl, Hash{"jsonrpc"=>"2.0","method"=>method,"id"=>0,"params"=>pars,"auth"=>@sAuthToken}.to_json)
             end
     end
+    
+	class Zabisend
+		def initialize(@zabbix_server : String)
+		end
+		def req(hostname : String, whatever)
+			data=[] of Hash(String, Int32 | Int64 | String)
+			tsNow=Time.now.epoch
+			whatever.each do |e|
+				h=Hash(String, Int32 | Int64 | String).new
+				if e.is_a?(NamedTuple) || e.is_a?(Hash)
+					e.keys.each { |k| h[k.to_s] = e[k] }
+					h["clock"] ||= tsNow
+				elsif e.is_a?(Array)
+					h["key"]=e[0]
+					h["value"]=e[1]
+					h["clock"] = e[2]? || tsNow
+				else
+					raise "You must pass: Array of (NamedTuple, Hash or Array)"
+				end
+				h["host"] ||= hostname
+				h["clock"] ||= tsNow
+				data << h
+			end
+			sock = Socket.tcp(Socket::Family::INET)
+			sock.connect @zabbix_server, 10051
+			sock.write_utf8({"request"=>"sender data","data"=>data}.to_json.to_slice)
+			sign=sock.read_bytes(UInt32, IO::ByteFormat::LittleEndian)
+			# "ZBXD" is 0x4458425a in IO::ByteFormat::LittleEndian
+			raise "Signature is unknown: Zabbix sender header is invalid" unless sign==1146634842
+			raise "0x01 delimiter after signature is absent: Zabbix sender header is invalid" unless sock.read_byte==1
+			payl_size=sock.read_byte
+			raise "Cant read payload length: nil received from the socket, but expected UInt8 instead" if payl_size.is_a?(Nil)
+			sock.skip(7)
+			nb=sock.read(jans=Bytes.new(payl_size))
+			raise "Cant read JSON response: not enough data readed from the socket" unless nb==payl_size
+			ans=JSON.parse(String.new(jans))
+			sock.close
+			return ans
+		end
+	end
 end
