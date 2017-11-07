@@ -4,6 +4,9 @@ require "uri"
 require "cossack"
 
 module Monitoring
+	DFLT_ZBXTRAP_TCP_PORT=10051_u16
+	ZABBIX_SENDER_SIGN="ZBXD"
+	
     class HTTPException < Exception
             @status_type : String = "Illegal HTTP status code"
             @status_code : Int32 = 999
@@ -101,7 +104,15 @@ module Monitoring
     end
     
 	class Zabisend
-		def initialize(@zabbix_server : String)
+		lib C
+            struct ZbxSenderHdr
+                z_sign : StaticArray(UInt8, 4)
+                z_stop_byte : UInt8
+                z_payload_l : UInt8
+            end
+		end
+
+		def initialize(@zabbix_server : String, @zabbix_trappers_port : UInt16=DFLT_ZBXTRAP_TCP_PORT)
 		end
 		def req(hostname : String, whatever)
 			data=[] of Hash(String, Int32 | Int64 | String)
@@ -123,17 +134,16 @@ module Monitoring
 				data << h
 			end
 			sock = Socket.tcp(Socket::Family::INET)
-			sock.connect @zabbix_server, 10051
+			sock.connect @zabbix_server, @zabbix_trappers_port
 			sock.write_utf8({"request"=>"sender data","data"=>data}.to_json.to_slice)
-			sign=sock.read_bytes(UInt32, IO::ByteFormat::LittleEndian)
-			# "ZBXD" is 0x4458425a in IO::ByteFormat::LittleEndian
-			raise "Signature is unknown: Zabbix sender header is invalid" unless sign==1146634842
-			raise "0x01 delimiter after signature is absent: Zabbix sender header is invalid" unless sock.read_byte==1
-			payl_size=sock.read_byte
-			raise "Cant read payload length: nil received from the socket, but expected UInt8 instead" if payl_size.is_a?(Nil)
-			sock.skip(7)
-			nb=sock.read(jans=Bytes.new(payl_size))
-			raise "Cant read JSON response: not enough data readed from the socket" unless nb==payl_size
+			zhdr=C::ZbxSenderHdr.new
+			sock.read(Slice.new(Pointer(UInt8).new(pointerof(zhdr).address), sizeof(C::ZbxSenderHdr)))
+			raise "Signature not found: Zabbix sender header is invalid" unless zhdr.z_sign.map {|c| c.unsafe_chr}.join == ZABBIX_SENDER_SIGN
+			raise "Delimiter after signature is absent: Zabbix sender header is invalid" unless zhdr.z_stop_byte==1
+			raise "According to Zabbix sender header there is no payload, but it must be here" unless zhdr.z_payload_l>0			
+			sock.skip(sizeof(C::ZbxSenderHdr)+1)
+			nb=sock.read(jans=Bytes.new(zhdr.z_payload_l))
+			raise "Cant read JSON response: not enough data readed from the socket" unless nb==zhdr.z_payload_l
 			ans=JSON.parse(String.new(jans))
 			sock.close
 			return ans
