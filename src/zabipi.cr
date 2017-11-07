@@ -6,7 +6,8 @@ require "cossack"
 module Monitoring
 	DFLT_ZBXTRAP_TCP_PORT=10051_u16
 	ZABBIX_SENDER_SIGN="ZBXD"
-	
+    DFLT_ZBX_API_RURL="/api_jsonrpc.php"
+    
     class HTTPException < Exception
             @status_type : String = "Illegal HTTP status code"
             @status_code : Int32 = 999
@@ -37,11 +38,29 @@ module Monitoring
                     @message="Connection error: "+msg
             end
     end
-
+    
+	class ZAPIRequest
+		getter :result
+		@result : JSON::Any
+		def initialize(@ua : Cossack::Client, @zapi_url : URI, @raw_request : String)
+            resp=@ua.post(@zapi_url.path.to_s, @raw_request) do |req|
+                req.headers["Content-type"]="application/json"
+            end
+            raise HTTPException.new(resp.status) unless resp.status==200
+            zbxResp=JSON.parse(resp.body)
+            if err=zbxResp["error"]?
+                    raise ZAPIException.new(zbxResp["error"].as_s)
+            elsif ! zbxResp["result"]?
+                    raise ZAPIException.new("no result")
+            end
+            @result=zbxResp["result"]
+		end
+	end
+	
     class ZAPIAnswer
             @result : (JSON::Any | Nil)
             
-            def initialize (@ua : Cossack::Client, @api_url : URI, @raw_request : String)
+            def initialize (@ua : Cossack::Client, @zapi_url : URI, @raw_request : String)
             end
             
             def result
@@ -49,33 +68,19 @@ module Monitoring
                     r=if @result.is_a?(JSON::Any)
                     	@result || JSON.parse("[]")
                       else
-                      	self.req
+                      	ZAPIRequest.new(@ua, @zapi_url, @raw_request).result
                       end
                     @result=r
-            end
-            
-            protected def req
-                    resp=@ua.post(@api_url.path.to_s, @raw_request) do |req|
-                    	req.headers["Content-type"]="application/json"
-                    end
-                    raise HTTPException.new(resp.status) unless resp.status==200
-                    zbxResp=JSON.parse(resp.body)
-                    if err=zbxResp["error"]?
-                            raise ZAPIException.new(zbxResp["error"].as_s)
-                    elsif ! zbxResp["result"]?
-                            raise ZAPIException.new("no result")
-                    end
-                    return zbxResp["result"]
             end
     end
 
     class Zabipi
-    	    DFLT_ZBX_API_RURL="/api_jsonrpc.php"
+    	    @version : String
             @sAuthToken : (String | Nil)
             @oUserAgent : Cossack::Client
             @oAPIUrl : URI
             @sAPIRelUrl : String
-            getter :oUserAgent, :sAuthToken, :oAPIUrl
+            getter :oUserAgent, :sAuthToken, :oAPIUrl, :version
             property :debug
             def initialize (apiUrl : String, login : String, password : String, @debug=false)
                 @oAPIUrl=URI.parse apiUrl
@@ -87,14 +92,13 @@ module Monitoring
                 @sAPIRelUrl=@oAPIUrl.path.to_s
                 puts "host=#{@oAPIUrl.host}, port=#{@oAPIUrl.port}, rurl=#{@sAPIRelUrl}" if @debug
                 @oUserAgent=Cossack::Client.new(@oAPIUrl.scheme.to_s+"://"+@oAPIUrl.host.to_s+":"+@oAPIUrl.port.to_s)
-                resp=@oUserAgent.post(
-                    @sAPIRelUrl,
-                    Hash{"jsonrpc"=>"2.0","method"=>"user.login","id"=>1,"params"=>{"password"=>password,"user"=>login}}.to_json
-                ) do |req|
-                    req.headers["Content-type"]="application/json"
-                end
-                raise HTTPException.new(resp.status) unless resp.status==200
-                @sAuthToken=JSON.parse(resp.body)["result"].as_s
+                @version=ZAPIRequest
+                	.new(@oUserAgent, @oAPIUrl, Hash{"jsonrpc"=>"2.0","method"=>"apiinfo.version","id"=>1,"params"=>[] of UInt8}.to_json)
+                	.result.as_s
+                puts "zapiVersion=#{@version}" if @debug
+                @sAuthToken=ZAPIRequest
+                	.new(@oUserAgent, @oAPIUrl, Hash{"jsonrpc"=>"2.0","method"=>"user.login","id"=>1,"params"=>{"password"=>password,"user"=>login}}.to_json)
+                	.result.as_s
                 puts "authToken=#{@sAuthToken}" if @debug
             end
             
