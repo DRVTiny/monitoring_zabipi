@@ -1,5 +1,5 @@
 require "json"
-require "./src/*"
+require "../src/*"
 conf : Hash(String, String)
 begin
         raise "Hey! You must specify file name as a first parameter" if ARGV.size==0
