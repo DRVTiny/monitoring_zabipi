@@ -102,7 +102,7 @@ module Monitoring
                 puts "authToken=#{@sAuthToken}" if @debug
             end
             
-            def do (method : String, pars : (Hash | Array))
+            def do (method : String, pars : (Hash | Array)=[] of UInt8)
                     return ZAPIAnswer.new(@oUserAgent, @oAPIUrl, Hash{"jsonrpc"=>"2.0","method"=>method,"id"=>0,"params"=>pars,"auth"=>@sAuthToken}.to_json)
             end
     end
@@ -139,7 +139,7 @@ module Monitoring
 			end
 			sock = Socket.tcp(Socket::Family::INET)
 			sock.connect @zabbix_server, @zabbix_trappers_port
-			sock.write_utf8({"request"=>"sender data","data"=>data}.to_json.to_slice)
+			sock.write_utf8({"request"=>"sender data","data"=>data,"clock"=>Time.new.epoch}.to_json.to_slice)
 			zhdr=C::ZbxSenderHdr.new
 			sock.read(Slice.new(Pointer(UInt8).new(pointerof(zhdr).address), sizeof(C::ZbxSenderHdr)))
 			raise "Signature not found: Zabbix sender header is invalid" unless zhdr.z_sign.map {|c| c.unsafe_chr}.join == ZABBIX_SENDER_SIGN
