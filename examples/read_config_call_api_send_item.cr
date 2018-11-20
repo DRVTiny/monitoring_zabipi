@@ -27,7 +27,7 @@ begin
     printf(%[Description for the first found trigger: <<%s>>\n], zans.result[0]["description"])
 
     # Output result in JSON form
-    puts "Reformated result in JSON presentation:\n" + zans.result.map { |t| [t["triggerid"], t["description"]] } .to_h.to_json
+    puts "Reformated result in JSON presentation:\n" + zans.result.as_a.map { |t| {t["triggerid"], t["description"]} } .to_h.to_json
 
     begin
     	zans_inv_req = zapi.do("host.create",{"triggerids"=>[110502],"expandDescription"=>1,"output"=>["description"]})
