@@ -1,3 +1,11 @@
+macro unix_ts
+  {% if compare_versions(Crystal::VERSION, "0.27.0") >= 0 %}
+    Time.now.to_unix
+  {% else %}
+    Time.now.epoch
+  {% end %}
+end
+
 module Monitoring
   DFLT_ZBXTRAP_TCP_PORT = 10051_u16
   ZABBIX_SENDER_SIGN    = "ZBXD"
@@ -17,21 +25,21 @@ module Monitoring
 
     def req(hostname : String, whatever)
       data = [] of Hash(String, Int32 | Int64 | String)
-      tsNow = Time.now.epoch
+      ts_now = unix_ts
       whatever.each do |e|
         h = Hash(String, Int32 | Int64 | String).new
         if e.is_a?(NamedTuple) || e.is_a?(Hash)
           e.keys.each { |k| h[k.to_s] = e[k] }
-          h["clock"] ||= tsNow
+          h["clock"] ||= ts_now
         elsif e.is_a?(Array)
           h["key"] = e[0]
           h["value"] = e[1]
-          h["clock"] = e[2]? || tsNow
+          h["clock"] = e[2]? || ts_now
         else
           raise "You must pass: Array of (NamedTuple, Hash or Array)"
         end
         h["host"] ||= hostname
-        h["clock"] ||= tsNow
+        h["clock"] ||= ts_now
         data << h
       end # <- iter on payload datastructure
       sock = Socket.tcp(Socket::Family::INET)
@@ -39,7 +47,7 @@ module Monitoring
       sock.write_utf8({
         "request" => "sender data",
         "data"    => data,
-        "clock"   => tsNow,
+        "clock"   => ts_now,
       }.to_json.to_slice)
       zhdr = C::ZbxSenderHdr.new
       sock.read(Slice.new(Pointer(UInt8).new(pointerof(zhdr).address), sizeof(C::ZbxSenderHdr)))
