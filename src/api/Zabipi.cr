@@ -13,7 +13,7 @@ module Monitoring
 
     def initialize(@status_code)
       begin
-        @status_type = @status_types[@status_code / 100 - 1]
+        @status_type = @status_types[(@status_code * 0.01).to_i32 - 1]
       rescue
         raise "Illegal HTTP status code received"
       end
