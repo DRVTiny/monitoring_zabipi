@@ -95,7 +95,7 @@ module Monitoring
     property :debug
 
     def initialize(apiUrl : String, login : String, password : String, @debug = false)
-      @oAPIUrl = URI.parse apiUrl
+      @oAPIUrl = URI.parse ( apiUrl =~ /\.[^\/.]+$/ ? apiUrl : ( apiUrl[-1] == '/' ? "" : "/" ) + "api_jsonrpc.php" )
       urlScheme = (@oAPIUrl.scheme || "http").downcase
       @oAPIUrl.scheme = urlScheme
       @oAPIUrl.host = "localhost" if @oAPIUrl.host.nil?
