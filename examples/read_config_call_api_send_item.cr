@@ -2,7 +2,8 @@ require "json"
 require "../src/**"
 conf : Hash(String, String)
 begin
-    raise "Hey! You must specify file name as a first parameter" if ARGV.size==0
+    raise "Hey! You must specify [file name] as a first parameter and [triggerids_list_separated_by_commas] as a second one" unless ARGV.size == 2
+    triggerids = (ARGV[1]? || "").split(/\s*,\s*/).map {|trg| trg.to_u32 }
     rows = File.read_lines(ARGV[0])
     rows.reject! { |line| line =~ /^\s*(?:#.*)?$/ }
     conf = rows.map{ |line|
@@ -15,19 +16,20 @@ begin
         end
     }.to_h
 
-    p conf
-
     zapi = Monitoring::Zabipi.new(conf["ZBX_URL"], conf["ZBX_LOGIN"], conf["ZBX_PASS"]);
     printf( %[Zabbix API version implemented by %s is %s\n], conf["ZBX_URL"], zapi.version )
 
-    zans = zapi.do("trigger.get",{"triggerids"=>[110502],"expandDescription"=>1,"output"=>["description"]})
+    zans = zapi.do("trigger.get", {"triggerids" => triggerids, "expandDescription" => 1, "output" => ["description"]})
+		if (result = zans.result).size > 0
+      # Output some field of the object with the desired index in result set
+      # ( .result is an Array of JSON::Any)
+      printf(%[Description for the first found trigger: <<%s>>\n], zans.result[0]["description"])
 
-    # Output some field of the object with the desired index in result set
-    # ( .result is an Array of JSON::Any)
-    printf(%[Description for the first found trigger: <<%s>>\n], zans.result[0]["description"])
-
-    # Output result in JSON form
-    puts "Reformated result in JSON presentation:\n" + zans.result.as_a.map { |t| {t["triggerid"], t["description"]} } .to_h.to_json
+      # Output result in JSON form
+      puts "Reformated result in JSON presentation:\n" + zans.result.as_a.map { |t| {t["triggerid"].as_s, t["description"]} } .to_h.to_json
+    else
+    	puts "It's a pitty, but no triggers with such triggerids found"
+    end
 
     begin
     	zans_inv_req = zapi.do("host.create",{"triggerids"=>[110502],"expandDescription"=>1,"output"=>["description"]})
