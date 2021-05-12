@@ -1,6 +1,6 @@
 require "json"
 require "uri"
-require "cossack"
+require "http/client"
 
 module Monitoring
   DFLT_ZBX_API_RURL          = "/api_jsonrpc.php"
@@ -11,12 +11,10 @@ module Monitoring
     @status_code : Int32 = 999
     @status_types = ["Informational", "Success", "Redirection", "Client-side error", "Server-side error"]
 
-    def initialize(@status_code)
-      begin
-        @status_type = @status_types[(@status_code * 0.01).to_i32 - 1]
-      rescue
-        raise "Illegal HTTP status code received"
-      end
+    def initialize(@status : HTTP::Status)
+      ix = (@status.code * 0.01).to_i32 - 1
+      raise "Illegal HTTP status code received" if ix > (@status_types.size - 1)
+      @status_type = @status_types[ix]
     end
 
     def type
@@ -53,11 +51,9 @@ module Monitoring
     getter :result
     @result : JSON::Any
 
-    def initialize(@ua : Cossack::Client, @zapi_url : URI, @raw_request : String)
-      resp = @ua.post(@zapi_url.path.to_s, @raw_request) do |req|
-        req.headers["Content-type"] = "application/json"
-      end
-      raise HTTPException.new(resp.status) unless resp.status == 200
+    def initialize(@ua : HTTP::Client, @zapi_url : URI, @raw_request : String)
+      resp = @ua.post(@zapi_url.path.to_s, HTTP::Headers{"Content-Type" => "application/json"}, form: @raw_request)
+      raise HTTPException.new(resp.status) unless resp.status == HTTP::Status::OK
       zbxResp = JSON.parse(resp.body)
       if err = zbxResp["error"]?
         raise ZAPIException.new(message: zbxResp["error"]["message"], code: zbxResp["error"]["code"].as_i, data: zbxResp["error"]["data"])
@@ -71,7 +67,7 @@ module Monitoring
   class ZAPIAnswer
     @result : JSON::Any?
 
-    def initialize(@ua : Cossack::Client, @zapi_url : URI, @raw_request : String)
+    def initialize(@ua : HTTP::Client, @zapi_url : URI, @raw_request : String)
     end
 
     def result
@@ -88,7 +84,7 @@ module Monitoring
   class Zabipi
     @version : String
     @sAuthToken : String?
-    @oUserAgent : Cossack::Client
+    @oUserAgent : HTTP::Client
     @oAPIUrl : URI
     @sAPIRelUrl : String
     getter :oUserAgent, :sAuthToken, :oAPIUrl, :version
@@ -102,7 +98,7 @@ module Monitoring
       @oAPIUrl.port = (@oAPIUrl.scheme == "https" ? 443 : 80) if @oAPIUrl.port.nil?
       @sAPIRelUrl = @oAPIUrl.path || DFLT_ZBX_API_RURL
       puts "zabipi init-d with: host=#{@oAPIUrl.host}, port=#{@oAPIUrl.port}, rurl=#{@sAPIRelUrl}" if @debug
-      @oUserAgent = Cossack::Client.new(urlScheme + "://" + @oAPIUrl.host.to_s + ":" + @oAPIUrl.port.to_s)
+      @oUserAgent = HTTP::Client.new(urlScheme + "://" + @oAPIUrl.host.to_s + ":" + @oAPIUrl.port.to_s)
       @version = ZAPIRequest
         .new(@oUserAgent, @oAPIUrl, Hash{"jsonrpc" => "2.0", "method" => "apiinfo.version", "id" => 1, "params" => [] of UInt8}.to_json)
         .result.as_s
