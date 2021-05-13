@@ -8,11 +8,12 @@ module Monitoring
 
   class HTTPException < Exception
     @status_type : String = "Illegal HTTP status code"
-    @status_code : Int32 = 999
+    @status_code : Int32
     @status_types = ["Informational", "Success", "Redirection", "Client-side error", "Server-side error"]
 
     def initialize(@status : HTTP::Status)
-      ix = (@status.code * 0.01).to_i32 - 1
+      @status_code = @status.code
+      ix = (@status_code * 0.01).to_i32 - 1
       raise "Illegal HTTP status code received" if ix > (@status_types.size - 1)
       @status_type = @status_types[ix]
     end
@@ -23,6 +24,14 @@ module Monitoring
 
     def code
       @status_code
+    end
+
+    def to_s : String
+      "HTTP Code: #{@status_code}, Type of HTTP error: #{@status_type}"
+    end
+
+    def to_s(io : IO)
+      io << "HTTP Code: " <<  @status_code.to_s << ", Type of HTTP error: " << @status_type
     end
   end
 
@@ -52,7 +61,7 @@ module Monitoring
     @result : JSON::Any
 
     def initialize(@ua : HTTP::Client, @zapi_url : URI, @raw_request : String)
-      resp = @ua.post(@zapi_url.path.to_s, HTTP::Headers{"Content-Type" => "application/json"}, form: @raw_request)
+      resp = @ua.post(@zapi_url.path.to_s, headers: HTTP::Headers{"Content-Type" => "application/json"}, body: @raw_request)
       raise HTTPException.new(resp.status) unless resp.status == HTTP::Status::OK
       zbxResp = JSON.parse(resp.body)
       if err = zbxResp["error"]?
@@ -98,7 +107,7 @@ module Monitoring
       @oAPIUrl.port = (@oAPIUrl.scheme == "https" ? 443 : 80) if @oAPIUrl.port.nil?
       @sAPIRelUrl = @oAPIUrl.path || DFLT_ZBX_API_RURL
       puts "zabipi init-d with: host=#{@oAPIUrl.host}, port=#{@oAPIUrl.port}, rurl=#{@sAPIRelUrl}" if @debug
-      @oUserAgent = HTTP::Client.new(urlScheme + "://" + @oAPIUrl.host.to_s + ":" + @oAPIUrl.port.to_s)
+      @oUserAgent = HTTP::Client.new( @oAPIUrl )
       @version = ZAPIRequest
         .new(@oUserAgent, @oAPIUrl, Hash{"jsonrpc" => "2.0", "method" => "apiinfo.version", "id" => 1, "params" => [] of UInt8}.to_json)
         .result.as_s
