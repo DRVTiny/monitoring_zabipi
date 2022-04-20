@@ -63,10 +63,7 @@ module Monitoring
     @result : JSON::Any
     
     def initialize(@ua : HTTP::Client, @zapi_url : URI, @raw_request : String)
-      pp @zapi_url
-      puts "#{@zapi_url.path.to_s}"
       resp = @ua.post(@zapi_url.path.to_s, headers: HTTP::Headers{"Content-Type" => "application/json"}, body: @raw_request)
-      pp resp
       raise HTTPException.new(resp.status) unless resp.status == HTTP::Status::OK
       zbxResp = JSON.parse(resp.body)
       if err = zbxResp["error"]?
@@ -128,7 +125,6 @@ module Monitoring
       tls_ctx = OpenSSL::SSL::Context::Client.new
       tls_ctx.verify_mode = OpenSSL::SSL::VerifyMode::NONE
       @http_client = HTTP::Client.new( @api_url, tls: tls_ctx )
-      puts "HERE!"
       
       @version = ZAPIRequest
         .new(@http_client, @api_url, Hash{"jsonrpc" => "2.0", "method" => "apiinfo.version", "id" => 1, "params" => [] of UInt8}.to_json)
