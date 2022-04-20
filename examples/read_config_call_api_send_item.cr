@@ -1,23 +1,13 @@
 require "json"
 require "../src/**"
-conf : Hash(String, String)
+
 begin
     raise "Hey! You must specify [file name] as a first parameter and [triggerids_list_separated_by_commas] as a second one" unless ARGV.size == 2
     triggerids = (ARGV[1]? || "").split(/\s*,\s*/).map {|trg| trg.to_u32 }
-    rows = File.read_lines(ARGV[0])
-    rows.reject! { |line| line =~ /^\s*(?:#.*)?$/ }
-    conf = rows.map{ |line|
-        if 		line.match(/^([^#=\s]+)\s*=\s*(?:(?<Q>["'`])((?:(?!\k<Q>|\\).|\\.)*)\k<Q>)(?:\s+(?:#.*)?)?$/)
-	        [$1, $3]
-        elsif 	line.match(/^([^#=\s]+)\s*=\s*([^#\s"']+)(?:\s+(?:#.*)?)?/)
-    		[$1, $2]
-        else
- 	       	raise "invalid-formatted config line: #{line}"
-        end
-    }.to_h
 
-    zapi = Monitoring::Zabipi.new(conf["ZBX_URL"], conf["ZBX_LOGIN"], conf["ZBX_PASS"]);
-    printf( %[Zabbix API version implemented by %s is %s\n], conf["ZBX_URL"], zapi.version )
+    zapi = Monitoring::Zabipi.new( ARGV[0] )
+    
+    printf( %[Zabbix API version implemented by %s is %s\n], zapi.api_url, zapi.version )
 
     zans = zapi.do("trigger.get", {"triggerids" => triggerids, "expandDescription" => 1, "output" => ["description"]})
 		if (result = zans.result).size > 0
@@ -40,7 +30,7 @@ begin
     
     zsend_data = [{key: "test.metric", value: "hello!"}]
     puts "Sending data to Zabbix server: <<#{zsend_data.to_json}>>"
-    zsend = Monitoring::Zabisend.new( conf["ZBX_SERVER"] )
+    zsend = Monitoring::Zabisend.new( zapi.maybe_zbx_server )
     puts "Zabbix sender answer:"
     p zsend.req("test-zbx-snd", zsend_data)
 
