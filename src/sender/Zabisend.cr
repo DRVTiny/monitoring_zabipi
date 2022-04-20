@@ -53,7 +53,7 @@ module Monitoring
       sock.write_byte(ZBX_HEADER_VERSION)
 
       sock.write_bytes(slc_json_req.size.to_u64, IO::ByteFormat::LittleEndian)
-      sock.write_utf8(slc_json_req)
+      sock.write_string(slc_json_req)
       
       sock.read(z_hdr_sign = Slice(UInt8).new(ZBX_HEADER_SIGN.size))
       raise "Unknown signature received from Zabbix server" unless z_hdr_sign == ZBX_HEADER_SIGN.to_slice
