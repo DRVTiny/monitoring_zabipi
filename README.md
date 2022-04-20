@@ -14,13 +14,24 @@ dependencies:
 
 ## Usage
 
+(Look at examples/read_config_call_api_send_item.cr for more practically
+meaningful example including Monitoring::Zabisend usage for sendind data 
+to zabbix trap)
+
 ```crystal
 require "json"
 require "monitoring_zabipi"
 
-zbx=Monitoring::Zabipi.new("http://example.com/zabbix/api_jsonrpc.php","your_frontend_login","your_frontend_password")
+zbx = Monitoring::Zabipi.new("http://example.com/zabbix/api_jsonrpc.php","your_frontend_login","your_frontend_password")
+# or:
+# zbx = Monitoring::Zabipi.new( PATH_TO_ZENV_CONFIG_FILE )
+# Where ZENV_CONFIG may contain something like this:
+#   ZBX_URL='https://zabbix.mycorp.com'
+#   ZBX_LOGIN='zapi-user'
+#   ZBX_PASS='zapi-password'
+#   DEBUG=true
 
-zans=zbx.do("trigger.get",{"triggerids"=>[21634,4708,9160],"expandDescription"=>1,"output"=>["description"]})
+zans = zbx.do("trigger.get", {"triggerids" => [21634,4708,9160], "expandDescription" => 1, "output" => ["description"]})
 
 # Hint: in real world you MUST check zans.result before doing anything with
 # it, and yes, you MUST handle exceptions (TODO: add exception handling
