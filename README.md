@@ -1,6 +1,6 @@
 # zabipi
 
-Zabbix API library for Crystal
+Zabbix API wrapper libarary for Crystal
 
 ## Installation
 
