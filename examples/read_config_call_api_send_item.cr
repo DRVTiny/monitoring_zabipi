@@ -20,10 +20,10 @@ begin
     else
     	puts "It's a pitty, but no triggers with such triggerids found"
     end
-
+    
+    # Invalid API request
     begin
-    	zans_inv_req = zapi.do("host.create",{"triggerids"=>[110502],"expandDescription"=>1,"output"=>["description"]})
-    	p zans_inv_req.result
+    	zapi.req("host.create",{"triggerids"=>[110502],"expandDescription"=>1,"output"=>["description"]})
     rescue zex : Monitoring::ZAPIException
     	puts "Zabbix API exception test: code: #{zex.code} message: #{zex.message}"
     end
@@ -35,10 +35,9 @@ begin
     p zsend.req("test-zbx-snd", zsend_data)
 
     at_exit {
-        zapi.do("user.logout")
+        zapi.req("user.logout")
     }
-
 rescue ex
     puts ex.message
-    exit(1)
+    exit 1
 end
