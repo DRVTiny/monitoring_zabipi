@@ -20,7 +20,7 @@ to zabbix trap)
 
 ```crystal
 require "json"
-require "monitoring_zabipi"
+require "zabipi"
 
 zbx = Monitoring::Zabipi.new("http://example.com/zabbix/api_jsonrpc.php","your_frontend_login","your_frontend_password")
 # or:
@@ -31,24 +31,18 @@ zbx = Monitoring::Zabipi.new("http://example.com/zabbix/api_jsonrpc.php","your_f
 #   ZBX_PASS='zapi-password'
 #   DEBUG=true
 
-zans = zbx.do("trigger.get", {"triggerids" => [21634,4708,9160], "expandDescription" => 1, "output" => ["description"]})
+result = zbx.req("trigger.get", {"triggerids" => [21634,4708,9160], "expandDescription" => 1, "output" => ["description"]}).as_a
 
 # Hint: in real world you MUST check zans.result before doing anything with
 # it, and yes, you MUST handle exceptions (TODO: add exception handling
 # example in README)
-puts "description for the first found trigger: #{zans.result[0]["description"]}"
-puts zans.result.map{ |t| [t["triggerid"], t["description"]] }.to_h.to_json
+puts "description for the first found trigger: #{result[0]["description"]}"
+puts result.map{ |t| [t["triggerid"], t["description"]] }.to_h.to_json
 ```
 
 ## Limitations
 
-For now, it is in (very) early development stage.
-
-* API usage without authentication is not supported /N.I.Y.
-
-## Development
-
-TODO: Write development instructions here
+Tell me, if you find them.
 
 ## Contributing
 
