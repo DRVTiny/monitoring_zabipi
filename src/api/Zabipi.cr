@@ -159,10 +159,11 @@ module Monitoring
       if @auth_now
         @auth_token = req("user.login", {"password" => password, "user" => login}).as_s
         DBG.info { "Zabbix API AuthToken: #{@auth_token}" } if @debug
+        at_exit { self.req("user.logout") }
       end
     end
 
-    def do(method : String, pars : (Hash | Array | NamedTuple) = [] of UInt8)
+    def do(method : String, pars : (Hash | Array | NamedTuple) = [] of UInt64)
       return ZAPIAnswer.new(
         @http_client,
         @api_url,
